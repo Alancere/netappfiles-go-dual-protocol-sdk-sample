@@ -177,6 +177,21 @@ func GetANFSnapshotPolicy(resourceURI string) string {
 	return snapshotPolicyName
 }
 
+// GetANFBackupPolicy gets backup policy name from resource id/uri
+func GetANFBackupPolicy(resourceURI string) string {
+
+	if len(strings.TrimSpace(resourceURI)) == 0 {
+		return ""
+	}
+
+	backupPolicyName := GetResourceValue(resourceURI, "/backupPolicies")
+	if backupPolicyName == "" {
+		return ""
+	}
+
+	return backupPolicyName
+}
+
 // IsANFResource checks if resource is an ANF related resource
 func IsANFResource(resourceURI string) bool {
 
@@ -231,6 +246,20 @@ func IsANFSnapshotPolicy(resourceURI string) bool {
 		!IsANFVolume(resourceURI) &&
 		!IsANFCapacityPool(resourceURI) &&
 		strings.LastIndex(resourceURI, "/snapshotPolicies/") > -1
+}
+
+// IsANFBackupPolicy checks resource is a backup policy
+func IsANFBackupPolicy(resourceURI string) bool {
+
+	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
+		return false
+	}
+
+	return !IsANFSnapshot(resourceURI) &&
+		!IsANFSnapshotPolicy(resourceURI) &&
+		!IsANFVolume(resourceURI) &&
+		!IsANFCapacityPool(resourceURI) &&
+		strings.LastIndex(resourceURI, "/backupPolicies/") > -1
 }
 
 // IsANFAccount checks resource is an account

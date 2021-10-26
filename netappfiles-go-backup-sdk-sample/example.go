@@ -23,8 +23,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/Azure-Samples/netappfiles-go-backup-sdk-sample/netappfiles-go-backup-sdk-sample/internal/sdkutils"
-	"github.com/Azure-Samples/netappfiles-go-backup-sdk-sample/netappfiles-go-backup-sdk-sample/internal/utils"
+	"netappfiles-go-backup-sdk-sample/internal/sdkutils"
+	"netappfiles-go-backup-sdk-sample/internal/utils"
+
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/netapp/mgmt/netapp"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/yelinaung/go-haikunator"
@@ -48,11 +49,11 @@ var (
 	}
 
 	// ANF Resource Properties
-	location              = "eastus"
+	location              = "westus2"
 	resourceGroupName     = "anf01-rg"
 	vnetresourceGroupName = "anf01-rg"
-	vnetName              = "vnet-01"
-	subnetName            = "anf-sn"
+	vnetName              = "vnet-02"
+	subnetName            = "default"
 	anfAccountName        = haikunator.New(time.Now().UTC().UnixNano()).Haikunate()
 	snapshotPolicyName    = "snapshotpolicy01"
 	backupPolicyName      = "backuppolicy01"
@@ -67,6 +68,7 @@ var (
 	accountID        string
 	snapshotPolicyID string
 	backupPolicyID   string
+	vaultID          string
 )
 
 func main() {
@@ -182,6 +184,7 @@ func main() {
 		Location: to.StringPtr(location),
 		Name:     to.StringPtr(snapshotPolicyName),
 		SnapshotPolicyProperties: &netapp.SnapshotPolicyProperties{
+			HourlySchedule:  &netapp.HourlySchedule{},
 			DailySchedule:   &dailySchedule,
 			WeeklySchedule:  &weeklySchedule,
 			MonthlySchedule: &monthlySchedule,
@@ -207,6 +210,16 @@ func main() {
 	}
 
 	snapshotPolicyID = *snapshotPolicy.ID
+
+	utils.ConsoleOutput("Waiting for snapshot policy to be ready...")
+	err = sdkutils.WaitForANFResource(cntx, snapshotPolicyID, 60, 50, false)
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for snapshot policy: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
+
 	utils.ConsoleOutput(fmt.Sprintf("Snapshot Policy successfully created, resource id: %v", snapshotPolicyID))
 
 	//-------------------------
@@ -221,10 +234,12 @@ func main() {
 		DailyBackupsToKeep:   to.Int32Ptr(10),
 		WeeklyBackupsToKeep:  to.Int32Ptr(10),
 		MonthlyBackupsToKeep: to.Int32Ptr(10),
+		Enabled:              to.BoolPtr(true),
 	}
 
 	backupPolicy, err := sdkutils.CreateANFBackupPolicy(
 		cntx,
+		location,
 		resourceGroupName,
 		anfAccountName,
 		backupPolicyName,
@@ -239,12 +254,33 @@ func main() {
 	}
 
 	backupPolicyID = *backupPolicy.ID
+
+	utils.ConsoleOutput("Waiting for backup policy to be ready...")
+	err = sdkutils.WaitForANFResource(cntx, backupPolicyID, 60, 50, false)
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for backup policy: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
+
 	utils.ConsoleOutput(fmt.Sprintf("Backup Policy successfully created, resource id: %v", backupPolicyID))
+
+	//-------------------------------
+	// Obtaining netAppAccount Vaults
+	//-------------------------------
+	vaultList, err := sdkutils.GetANFVaultList(cntx, resourceGroupName, anfAccountName)
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while listing account vaults: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
 
 	//----------------
 	// Volume creation
 	//----------------
-	utils.ConsoleOutput(fmt.Sprintf("Creating NFSv3 Volume %v with Snapshot Policy %v attached...", volumeName, snapshotPolicyName))
+	utils.ConsoleOutput(fmt.Sprintf("Creating NFSv3 Volume %v with Snapshot Policy %v and Backup Policy %v assigned...", volumeName, snapshotPolicyName, backupPolicyName))
 
 	// Build data protection object with snapshot and backup properties
 	dataProtectionObject := netapp.VolumePropertiesDataProtection{
@@ -253,7 +289,10 @@ func main() {
 		},
 
 		Backup: &netapp.VolumeBackupProperties{
+			BackupEnabled:  to.BoolPtr(true),
+			PolicyEnforced: to.BoolPtr(true),
 			BackupPolicyID: to.StringPtr(backupPolicyID),
+			VaultID:        (*vaultList.Value)[0].ID,
 		},
 	}
 
@@ -266,6 +305,7 @@ func main() {
 		volumeName,
 		serviceLevel,
 		subnetID,
+		"",
 		"",
 		protocolTypes,
 		volumeSizeBytes,

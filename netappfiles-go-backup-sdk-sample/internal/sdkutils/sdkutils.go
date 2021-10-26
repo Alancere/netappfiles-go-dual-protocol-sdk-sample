@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure-Samples/netappfiles-go-backup-sdk-sample/netappfiles-go-backup-sdk-sample/internal/iam"
-	"github.com/Azure-Samples/netappfiles-go-backup-sdk-sample/netappfiles-go-backup-sdk-sample/internal/uri"
-	"github.com/Azure-Samples/netappfiles-go-backup-sdk-sample/netappfiles-go-backup-sdk-sample/internal/utils"
+	"netappfiles-go-backup-sdk-sample/internal/iam"
+	"netappfiles-go-backup-sdk-sample/internal/uri"
+	"netappfiles-go-backup-sdk-sample/internal/utils"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/netapp/mgmt/netapp"
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/resources"
@@ -151,6 +151,20 @@ func getBackupPoliciesClient() (netapp.BackupPoliciesClient, error) {
 	return client, nil
 }
 
+func getVaultsClient() (netapp.VaultsClient, error) {
+
+	authorizer, subscriptionID, err := iam.GetAuthorizer()
+	if err != nil {
+		return netapp.VaultsClient{}, err
+	}
+
+	client := netapp.NewVaultsClient(subscriptionID)
+	client.Authorizer = authorizer
+	client.AddToUserAgent(userAgent)
+
+	return client, nil
+}
+
 // GetResourceByID gets a generic resource
 func GetResourceByID(ctx context.Context, resourceID, APIVersion string) (resources.GenericResource, error) {
 
@@ -261,7 +275,7 @@ func CreateANFCapacityPool(ctx context.Context, location, resourceGroupName, acc
 }
 
 // CreateANFVolume creates an ANF volume within a Capacity Pool
-func CreateANFVolume(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName, serviceLevel, subnetID, snapshotID string, protocolTypes []string, volumeUsageQuota int64, unixReadOnly, unixReadWrite bool, tags map[string]*string, dataProtectionObject netapp.VolumePropertiesDataProtection) (netapp.Volume, error) {
+func CreateANFVolume(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName, serviceLevel, subnetID, snapshotID string, backupID string, protocolTypes []string, volumeUsageQuota int64, unixReadOnly, unixReadWrite bool, tags map[string]*string, dataProtectionObject netapp.VolumePropertiesDataProtection) (netapp.Volume, error) {
 
 	if len(protocolTypes) > 2 {
 		return netapp.Volume{}, fmt.Errorf("maximum of two protocol types are supported")
@@ -269,6 +283,10 @@ func CreateANFVolume(ctx context.Context, location, resourceGroupName, accountNa
 
 	if len(protocolTypes) > 1 && utils.Contains(protocolTypes, "NFSv4.1") {
 		return netapp.Volume{}, fmt.Errorf("only cifs/nfsv3 protocol types are supported as dual protocol")
+	}
+
+	if snapshotID != "" && backupID != "" {
+		return netapp.Volume{}, fmt.Errorf("volume cannot be created from both snapshotID and backupID")
 	}
 
 	_, found := utils.FindInSlice(validProtocols, protocolTypes[0])
@@ -306,6 +324,7 @@ func CreateANFVolume(ctx context.Context, location, resourceGroupName, accountNa
 
 	volumeProperties := netapp.VolumeProperties{
 		SnapshotID:     map[bool]*string{true: to.StringPtr(snapshotID), false: nil}[snapshotID != ""],
+		BackupID:       map[bool]*string{true: to.StringPtr(backupID), false: nil}[backupID != ""],
 		ExportPolicy:   map[bool]*netapp.VolumePropertiesExportPolicy{true: &exportPolicy, false: nil}[protocolTypes[0] != cifs],
 		ProtocolTypes:  &protocolTypes,
 		ServiceLevel:   svcLevel,
@@ -535,7 +554,7 @@ func UpdateANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName
 }
 
 // CreateANFBackupPolicy creates a Snapshot Policy to be used on volumes
-func CreateANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, policyName string, policyProperties netapp.BackupPolicyProperties) (netapp.BackupPolicy, error) {
+func CreateANFBackupPolicy(ctx context.Context, location, resourceGroupName, accountName, policyName string, policyProperties netapp.BackupPolicyProperties) (netapp.BackupPolicy, error) {
 
 	backupPolicyClient, err := getBackupPoliciesClient()
 	if err != nil {
@@ -543,14 +562,15 @@ func CreateANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, 
 	}
 
 	backupPolicyBody := netapp.BackupPolicy{
+		Location:               to.StringPtr(location),
 		BackupPolicyProperties: &policyProperties,
 	}
 
 	future, err := backupPolicyClient.Create(
 		ctx,
-		policyName,
 		resourceGroupName,
 		accountName,
+		policyName,
 		backupPolicyBody,
 	)
 
@@ -566,6 +586,26 @@ func CreateANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, 
 	backupPolicy, _ := future.Result(backupPolicyClient)
 
 	return backupPolicy, nil
+}
+
+// GetANFVault gets an netappAccount/vaults resource
+func GetANFVaultList(ctx context.Context, resourceGroupName, accountName string) (netapp.VaultList, error) {
+
+	vaultsClient, err := getVaultsClient()
+	if err != nil {
+		return netapp.VaultList{}, err
+	}
+
+	vaults, err := vaultsClient.List(ctx,
+		resourceGroupName,
+		accountName,
+	)
+
+	if err != nil {
+		return netapp.VaultList{}, fmt.Errorf("cannot retrieve list of vaults from account %v: %v", accountName, err)
+	}
+
+	return vaults, nil
 }
 
 // DeleteANFVolume deletes a volume
@@ -730,6 +770,14 @@ func WaitForNoANFResource(ctx context.Context, resourceID string, intervalInSec 
 				uri.GetANFAccount(resourceID),
 				uri.GetANFSnapshotPolicy(resourceID),
 			)
+		} else if uri.IsANFBackupPolicy(resourceID) {
+			client, _ := getBackupPoliciesClient()
+			_, err = client.Get(
+				ctx,
+				uri.GetResourceGroup(resourceID),
+				uri.GetANFAccount(resourceID),
+				uri.GetANFBackupPolicy(resourceID),
+			)
 		} else if uri.IsANFAccount(resourceID) {
 			client, _ := getAccountsClient()
 			_, err = client.Get(
@@ -799,6 +847,14 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				uri.GetResourceGroup(resourceID),
 				uri.GetANFAccount(resourceID),
 				uri.GetANFSnapshotPolicy(resourceID),
+			)
+		} else if uri.IsANFBackupPolicy(resourceID) {
+			client, _ := getBackupPoliciesClient()
+			_, err = client.Get(
+				ctx,
+				uri.GetResourceGroup(resourceID),
+				uri.GetANFAccount(resourceID),
+				uri.GetANFBackupPolicy(resourceID),
 			)
 		} else if uri.IsANFAccount(resourceID) {
 			client, _ := getAccountsClient()

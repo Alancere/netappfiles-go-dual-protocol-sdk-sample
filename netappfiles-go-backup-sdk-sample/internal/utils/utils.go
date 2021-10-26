@@ -15,7 +15,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Azure-Samples/netappfiles-go-backup-sdk-sample/netappfiles-go-backup-sdk-sample/internal/models"
+	"netappfiles-go-backup-sdk-sample/internal/models"
+
 	"golang.org/x/term"
 )
 
