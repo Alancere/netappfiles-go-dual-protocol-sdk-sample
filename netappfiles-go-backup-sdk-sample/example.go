@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"netappfiles-go-backup-sdk-sample/internal/sdkutils"
+	"netappfiles-go-backup-sdk-sample/internal/uri"
 	"netappfiles-go-backup-sdk-sample/internal/utils"
 
 	"github.com/Azure/azure-sdk-for-go/profiles/latest/netapp/mgmt/netapp"
@@ -57,18 +58,23 @@ var (
 	anfAccountName        = haikunator.New(time.Now().UTC().UnixNano()).Haikunate()
 	snapshotPolicyName    = "snapshotpolicy01"
 	backupPolicyName      = "backuppolicy01"
+	backupName            = fmt.Sprintf("InitialBackup-%v", anfAccountName)
+	backupLabel           = "InitialBackups"
 	capacityPoolName      = "Pool01"
 	serviceLevel          = "Standard"
 	volumeName            = fmt.Sprintf("NFSv3-Vol-%v-%v", anfAccountName, capacityPoolName)
+	restoredVolumeName    = fmt.Sprintf("Restored-NFSv3-Vol-%v-%v", anfAccountName, capacityPoolName)
 
 	// Some other variables used throughout the course of the code execution - no need to change it
 	exitCode         int
 	volumeID         string
+	restoredVolumeID string
 	capacityPoolID   string
 	accountID        string
 	snapshotPolicyID string
 	backupPolicyID   string
 	vaultID          string
+	backupID         string
 )
 
 func main() {
@@ -78,7 +84,7 @@ func main() {
 	// Cleanup and exit handling
 	defer func() { exit(cntx); os.Exit(exitCode) }()
 
-	utils.PrintHeader("Azure NetAppFiles Go Snapshot Policy SDK Sample - Sample application that enables Snaphost Policy on an NFSv3 volume.")
+	utils.PrintHeader("Azure NetAppFiles Go Backup SDK Sample - Sample application that enables policy-based backup and takes adhoc backup on an NFSv3 volume.")
 
 	// Getting subscription ID from authentication file
 	config, err := utils.ReadAzureBasicInfoJSON(os.Getenv("AZURE_AUTH_LOCATION"))
@@ -156,6 +162,9 @@ func main() {
 	// Creating Snapshot Policy - using arbitrary values
 	utils.ConsoleOutput(fmt.Sprintf("Creating Snapshot Policy %v...", snapshotPolicyName))
 
+	// We are not defining hourly schedule, since it is not
+	// supported by backup policies.
+
 	// Everyday at 22:00
 	dailySchedule := netapp.DailySchedule{
 		Hour:            to.Int32Ptr(22),
@@ -212,7 +221,7 @@ func main() {
 	snapshotPolicyID = *snapshotPolicy.ID
 
 	utils.ConsoleOutput("Waiting for snapshot policy to be ready...")
-	err = sdkutils.WaitForANFResource(cntx, snapshotPolicyID, 60, 50, false)
+	err = sdkutils.WaitForANFResource(cntx, snapshotPolicyID, 30, 100, false, false)
 	if err != nil {
 		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for snapshot policy: %v", err))
 		exitCode = 1
@@ -256,7 +265,7 @@ func main() {
 	backupPolicyID = *backupPolicy.ID
 
 	utils.ConsoleOutput("Waiting for backup policy to be ready...")
-	err = sdkutils.WaitForANFResource(cntx, backupPolicyID, 60, 50, false)
+	err = sdkutils.WaitForANFResource(cntx, backupPolicyID, 30, 100, false, false)
 	if err != nil {
 		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for backup policy: %v", err))
 		exitCode = 1
@@ -269,6 +278,13 @@ func main() {
 	//-------------------------------
 	// Obtaining netAppAccount Vaults
 	//-------------------------------
+
+	// A vault is where ANF Backups are stored, it is created automatically
+	// when a NetAppAccount is created and we need to reference this vault
+	// at the time we assign the backup policy to the volume to have
+	// backups taken. Note that this is not exposed to the end-user and it is
+	// automatically managed by ANF service
+	utils.ConsoleOutput("Obtaining netAppAccount Vault...")
 	vaultList, err := sdkutils.GetANFVaultList(cntx, resourceGroupName, anfAccountName)
 	if err != nil {
 		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while listing account vaults: %v", err))
@@ -276,6 +292,8 @@ func main() {
 		shouldCleanUp = false
 		return
 	}
+	vaultID := (*vaultList.Value)[0].ID
+	utils.ConsoleOutput(fmt.Sprintf("VaultID is: %v", *vaultID))
 
 	//----------------
 	// Volume creation
@@ -292,7 +310,7 @@ func main() {
 			BackupEnabled:  to.BoolPtr(true),
 			PolicyEnforced: to.BoolPtr(true),
 			BackupPolicyID: to.StringPtr(backupPolicyID),
-			VaultID:        (*vaultList.Value)[0].ID,
+			VaultID:        vaultID,
 		},
 	}
 
@@ -326,7 +344,7 @@ func main() {
 	utils.ConsoleOutput(fmt.Sprintf("Volume successfully created, resource id: %v", volumeID))
 
 	utils.ConsoleOutput("Waiting for volume to be ready...")
-	err = sdkutils.WaitForANFResource(cntx, volumeID, 60, 50, false)
+	err = sdkutils.WaitForANFResource(cntx, volumeID, 30, 100, false, false)
 	if err != nil {
 		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for volume: %v", err))
 		exitCode = 1
@@ -334,41 +352,127 @@ func main() {
 		return
 	}
 
-	// //------------------------
-	// // Snapshot Policy updates
-	// //------------------------
-	// utils.ConsoleOutput(fmt.Sprintf("Updating snapshot policy %v...", snapshotPolicyName))
+	//------------------------
+	// Backup Policy updates
+	//------------------------
+	utils.ConsoleOutput(fmt.Sprintf("Updating backup policy %v...", backupPolicyName))
 
-	// // Updating number of snapshots to keep for hourly schedule
-	// newHourlySchedule := *snapshotPolicy.SnapshotPolicyProperties.HourlySchedule
-	// newHourlySchedule.SnapshotsToKeep = to.Int32Ptr(10)
+	// Updating number of backups to keep for daily schedule
+	backupPolicyPropertyUpdate := netapp.BackupPolicyProperties{
+		DailyBackupsToKeep: to.Int32Ptr(5),
+	}
 
-	// // Creating a patch object
-	// snapshotPolicyPatch := netapp.SnapshotPolicyPatch{
-	// 	Location: to.StringPtr(location),
-	// 	SnapshotPolicyProperties: &netapp.SnapshotPolicyProperties{
-	// 		HourlySchedule: &newHourlySchedule,
-	// 	},
-	// }
+	// Creating a patch object
+	backupPolicyPatch := netapp.BackupPolicyPatch{
+		Location:               to.StringPtr(location),
+		BackupPolicyProperties: &backupPolicyPropertyUpdate,
+	}
 
-	// // Executing the update
-	// _, err = sdkutils.UpdateANFSnapshotPolicy(
-	// 	cntx,
-	// 	resourceGroupName,
-	// 	anfAccountName,
-	// 	snapshotPolicyName,
-	// 	snapshotPolicyPatch,
-	// )
+	// Executing the update
+	_, err = sdkutils.UpdateANFBackupPolicy(
+		cntx,
+		resourceGroupName,
+		anfAccountName,
+		backupPolicyName,
+		backupPolicyPatch,
+	)
 
-	// if err != nil {
-	// 	utils.ConsoleOutput(fmt.Sprintf("an error ocurred while updating snapshot policy: %v", err))
-	// 	exitCode = 1
-	// 	shouldCleanUp = false
-	// 	return
-	// }
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while updating backup policy: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
 
-	// utils.ConsoleOutput("Wait a few seconds for snapshot policy to complete update operation before deleting resources...")
-	// time.Sleep(time.Duration(5) * time.Second)
+	utils.ConsoleOutput(fmt.Sprintf("Backup policy %v successfully updated...", backupPolicyName))
+
+	//------------------------
+	// Adhoc backup
+	//------------------------
+	utils.ConsoleOutput(fmt.Sprintf("Creating adhoc backup for NFSv3 Volume %v ...", volumeName))
+
+	// Build data protection object with snapshot and backup properties
+	backup, err := sdkutils.CreateANFBackup(
+		cntx,
+		location,
+		resourceGroupName,
+		anfAccountName,
+		capacityPoolName,
+		volumeName,
+		backupName,
+		backupLabel,
+	)
+
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while creating backup from volume: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
+
+	backupID = *backup.ID
+	utils.ConsoleOutput(fmt.Sprintf("Backup successfully created, resource id: %v", backupID))
+
+	utils.ConsoleOutput("Waiting for backup resource to be ready...")
+	err = sdkutils.WaitForANFResource(cntx, backupID, 15, 200, false, false)
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for backup: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
+
+	utils.ConsoleOutput("Waiting for backup completion...")
+	err = sdkutils.WaitForANFBackupCompletion(cntx, backupID, 15, 200)
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for backup to complete: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
+
+	//-------------------------------
+	// Restoring backup to new volume
+	//-------------------------------
+	utils.ConsoleOutput(fmt.Sprintf("Restoring adhoc backup to new NFSv3 Volume %v...", restoredVolumeName))
+
+	restoredVolume, err := sdkutils.CreateANFVolume(
+		cntx,
+		location,
+		resourceGroupName,
+		anfAccountName,
+		capacityPoolName,
+		restoredVolumeName,
+		serviceLevel,
+		subnetID,
+		"",
+		*backup.BackupID,
+		protocolTypes,
+		volumeSizeBytes,
+		false,
+		true,
+		sampleTags,
+		netapp.VolumePropertiesDataProtection{},
+	)
+
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while creating volume: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
+
+	restoredVolumeID = *restoredVolume.ID
+	utils.ConsoleOutput(fmt.Sprintf("Volume successfully created from backup %v, resource id: %v", backupName, restoredVolumeID))
+
+	utils.ConsoleOutput("Waiting for volume to be ready...")
+	err = sdkutils.WaitForANFResource(cntx, restoredVolumeID, 30, 100, false, false)
+	if err != nil {
+		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for volume: %v", err))
+		exitCode = 1
+		shouldCleanUp = false
+		return
+	}
 }
 
 func exit(cntx context.Context) {
@@ -378,41 +482,49 @@ func exit(cntx context.Context) {
 	// to true. Notice that if there is an error while executing the main parts of this
 	// code, clean up will need to be done manually.
 	// Since resource deletions cannot happen if there is a child resource, we will perform the
-	// clean up in the following order: Volume -> Capacity Pool -> Snapshot Policy -> Account
+	// clean up in the following order:
+	//     Volume
+	//     Capacity Pool
+	//     Snapshot Policy
+	//     Backup Policy
+	//     Account
 	if shouldCleanUp {
 		utils.ConsoleOutput("\tPerforming clean up")
 
 		resourceGroupName := resourceGroupName
 		accountName := anfAccountName
 		poolName := capacityPoolName
-		volumeName := volumeName
 
-		// Volume deletion
-		utils.ConsoleOutput(fmt.Sprintf("\tRemoving %v volume...", volumeID))
-		err := sdkutils.DeleteANFVolume(
-			cntx,
-			resourceGroupName,
-			accountName,
-			poolName,
-			volumeName,
-		)
-		if err != nil {
-			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting volume: %v", err))
-			exitCode = 1
-			return
+		volumesToDelete := []string{volumeID, restoredVolumeID}
+
+		for _, volumeIdToDelete := range volumesToDelete {
+			// Volume deletion
+			utils.ConsoleOutput(fmt.Sprintf("\tRemoving %v volume...", volumeIdToDelete))
+			err := sdkutils.DeleteANFVolume(
+				cntx,
+				uri.GetResourceGroup(volumeIdToDelete),
+				uri.GetANFAccount(volumeIdToDelete),
+				uri.GetANFCapacityPool(volumeIdToDelete),
+				uri.GetANFVolume(volumeIdToDelete),
+			)
+			if err != nil {
+				utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting volume: %v", err))
+				exitCode = 1
+				return
+			}
+			err = sdkutils.WaitForANFResource(cntx, volumeIdToDelete, 30, 100, false, true)
+			if err != nil {
+				utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for volume complete deletion: %v", err))
+				exitCode = 1
+				shouldCleanUp = false
+				return
+			}
+			utils.ConsoleOutput("\tVolume successfully deleted")
 		}
-		err = sdkutils.WaitForNoANFResource(cntx, volumeID, 60, 50, false)
-		if err != nil {
-			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for volume complete deletion: %v", err))
-			exitCode = 1
-			shouldCleanUp = false
-			return
-		}
-		utils.ConsoleOutput("\tVolume successfully deleted")
 
 		// Pool Cleanup
 		utils.ConsoleOutput(fmt.Sprintf("\tCleaning up capacity pool %v...", capacityPoolID))
-		err = sdkutils.DeleteANFCapacityPool(
+		err := sdkutils.DeleteANFCapacityPool(
 			cntx,
 			resourceGroupName,
 			accountName,
@@ -423,7 +535,7 @@ func exit(cntx context.Context) {
 			exitCode = 1
 			return
 		}
-		err = sdkutils.WaitForNoANFResource(cntx, capacityPoolID, 60, 50, false)
+		err = sdkutils.WaitForANFResource(cntx, capacityPoolID, 30, 100, false, true)
 		if err != nil {
 			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for capacity complete deletion: %v", err))
 			exitCode = 1
@@ -445,7 +557,7 @@ func exit(cntx context.Context) {
 			exitCode = 1
 			return
 		}
-		err = sdkutils.WaitForNoANFResource(cntx, snapshotPolicyID, 60, 50, false)
+		err = sdkutils.WaitForANFResource(cntx, snapshotPolicyID, 30, 100, false, true)
 		if err != nil {
 			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for snapshot policy complete deletion: %v", err))
 			exitCode = 1
@@ -453,6 +565,28 @@ func exit(cntx context.Context) {
 			return
 		}
 		utils.ConsoleOutput("\tSnapshot policy successfully deleted")
+
+		// Backup Policy Cleanup
+		utils.ConsoleOutput(fmt.Sprintf("\tCleaning up backup policy %v...", backupPolicyID))
+		err = sdkutils.DeleteANFBackupPolicy(
+			cntx,
+			resourceGroupName,
+			accountName,
+			backupPolicyName,
+		)
+		if err != nil {
+			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting backup policy: %v", err))
+			exitCode = 1
+			return
+		}
+		err = sdkutils.WaitForANFResource(cntx, backupPolicyID, 30, 100, false, true)
+		if err != nil {
+			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for backup policy complete deletion: %v", err))
+			exitCode = 1
+			shouldCleanUp = false
+			return
+		}
+		utils.ConsoleOutput("\tBackup policy successfully deleted")
 
 		// Account Cleanup
 		utils.ConsoleOutput(fmt.Sprintf("\tCleaning up account %v...", accountID))

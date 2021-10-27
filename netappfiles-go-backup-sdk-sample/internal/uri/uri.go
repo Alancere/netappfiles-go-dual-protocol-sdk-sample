@@ -192,6 +192,21 @@ func GetANFBackupPolicy(resourceURI string) string {
 	return backupPolicyName
 }
 
+// GetANFBackup gets backup name from resource id/uri
+func GetANFBackup(resourceURI string) string {
+
+	if len(strings.TrimSpace(resourceURI)) == 0 {
+		return ""
+	}
+
+	backupName := GetResourceValue(resourceURI, "/backups")
+	if backupName == "" {
+		return ""
+	}
+
+	return backupName
+}
+
 // IsANFResource checks if resource is an ANF related resource
 func IsANFResource(resourceURI string) bool {
 
@@ -220,6 +235,7 @@ func IsANFVolume(resourceURI string) bool {
 	}
 
 	return !IsANFSnapshot(resourceURI) &&
+		strings.LastIndex(resourceURI, "/backups/") == -1 &&
 		strings.LastIndex(resourceURI, "/volumes/") > -1
 }
 
@@ -232,6 +248,7 @@ func IsANFCapacityPool(resourceURI string) bool {
 
 	return !IsANFSnapshot(resourceURI) &&
 		!IsANFVolume(resourceURI) &&
+		strings.LastIndex(resourceURI, "/backups/") == -1 &&
 		strings.LastIndex(resourceURI, "/capacityPools/") > -1
 }
 
@@ -262,6 +279,21 @@ func IsANFBackupPolicy(resourceURI string) bool {
 		strings.LastIndex(resourceURI, "/backupPolicies/") > -1
 }
 
+// IsANFBackup checks resource is a backup
+func IsANFBackup(resourceURI string) bool {
+
+	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
+		return false
+	}
+
+	return !IsANFBackupPolicy(resourceURI) &&
+		!IsANFSnapshot(resourceURI) &&
+		!IsANFSnapshotPolicy(resourceURI) &&
+		!IsANFVolume(resourceURI) &&
+		!IsANFCapacityPool(resourceURI) &&
+		strings.LastIndex(resourceURI, "/backups/") > -1
+}
+
 // IsANFAccount checks resource is an account
 func IsANFAccount(resourceURI string) bool {
 
@@ -269,11 +301,13 @@ func IsANFAccount(resourceURI string) bool {
 		return false
 	}
 
-	return !IsANFSnapshot(resourceURI) &&
+	return !IsANFBackup(resourceURI) &&
+		!IsANFSnapshot(resourceURI) &&
 		!IsANFVolume(resourceURI) &&
 		!IsANFCapacityPool(resourceURI) &&
 		!IsANFSnapshotPolicy(resourceURI) &&
 		strings.LastIndex(resourceURI, "/snapshotPolicies/") == -1 &&
 		strings.LastIndex(resourceURI, "/backupPolicies/") == -1 &&
+		strings.LastIndex(resourceURI, "/backups/") == -1 &&
 		strings.LastIndex(resourceURI, "/netAppAccounts/") > -1
 }

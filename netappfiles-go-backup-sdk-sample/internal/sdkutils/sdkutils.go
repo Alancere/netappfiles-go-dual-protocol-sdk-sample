@@ -151,6 +151,20 @@ func getBackupPoliciesClient() (netapp.BackupPoliciesClient, error) {
 	return client, nil
 }
 
+func getBackupsClient() (netapp.BackupsClient, error) {
+
+	authorizer, subscriptionID, err := iam.GetAuthorizer()
+	if err != nil {
+		return netapp.BackupsClient{}, err
+	}
+
+	client := netapp.NewBackupsClient(subscriptionID)
+	client.Authorizer = authorizer
+	client.AddToUserAgent(userAgent)
+
+	return client, nil
+}
+
 func getVaultsClient() (netapp.VaultsClient, error) {
 
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
@@ -588,6 +602,45 @@ func CreateANFBackupPolicy(ctx context.Context, location, resourceGroupName, acc
 	return backupPolicy, nil
 }
 
+// CreateANFBackup creates an adhoc backup from volume
+func CreateANFBackup(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName, backupName, backupLabel string) (netapp.Backup, error) {
+
+	backupsClient, err := getBackupsClient()
+	if err != nil {
+		return netapp.Backup{}, err
+	}
+
+	backupBody := netapp.Backup{
+		Location: to.StringPtr(location),
+		BackupProperties: &netapp.BackupProperties{
+			Label: to.StringPtr(backupLabel),
+		},
+	}
+
+	future, err := backupsClient.Create(
+		ctx,
+		resourceGroupName,
+		accountName,
+		poolName,
+		volumeName,
+		backupName,
+		backupBody,
+	)
+
+	if err != nil {
+		return netapp.Backup{}, fmt.Errorf("cannot create backup: %v", err)
+	}
+
+	err = future.WaitForCompletionRef(ctx, backupsClient.Client)
+	if err != nil {
+		return netapp.Backup{}, fmt.Errorf("cannot get the backup create or update future response: %v", err)
+	}
+
+	backup, _ := future.Result(backupsClient)
+
+	return backup, nil
+}
+
 // GetANFVault gets an netappAccount/vaults resource
 func GetANFVaultList(ctx context.Context, resourceGroupName, accountName string) (netapp.VaultList, error) {
 
@@ -606,6 +659,34 @@ func GetANFVaultList(ctx context.Context, resourceGroupName, accountName string)
 	}
 
 	return vaults, nil
+}
+
+// UpdateANFBackupPolicy update an ANF volume
+func UpdateANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, policyName string, backupPolicyPatch netapp.BackupPolicyPatch) (netapp.BackupPolicy, error) {
+
+	backupPoliciesClient, err := getBackupPoliciesClient()
+	if err != nil {
+		return netapp.BackupPolicy{}, err
+	}
+
+	future, err := backupPoliciesClient.Update(
+		ctx,
+		resourceGroupName,
+		accountName,
+		policyName,
+		backupPolicyPatch,
+	)
+
+	if err != nil {
+		return netapp.BackupPolicy{}, fmt.Errorf("cannot update snapshot policy: %v", err)
+	}
+
+	err = future.WaitForCompletionRef(ctx, backupPoliciesClient.Client)
+	if err != nil {
+		return netapp.BackupPolicy{}, fmt.Errorf("cannot get the snapshot create or update future response: %v", err)
+	}
+
+	return future.Result(backupPoliciesClient)
 }
 
 // DeleteANFVolume deletes a volume
@@ -690,6 +771,33 @@ func DeleteANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName
 	return nil
 }
 
+// DeleteANFBackupPolicy deletes a backup policy
+func DeleteANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, policyName string) error {
+
+	backupPolicyClient, err := getBackupPoliciesClient()
+	if err != nil {
+		return err
+	}
+
+	future, err := backupPolicyClient.Delete(
+		ctx,
+		resourceGroupName,
+		accountName,
+		policyName,
+	)
+
+	if err != nil {
+		return fmt.Errorf("cannot delete backup policy: %v", err)
+	}
+
+	err = future.WaitForCompletionRef(ctx, backupPolicyClient.Client)
+	if err != nil {
+		return fmt.Errorf("cannot get the backup policy delete future response: %v", err)
+	}
+
+	return nil
+}
+
 // DeleteANFAccount deletes an account
 func DeleteANFAccount(ctx context.Context, resourceGroupName, accountName string) error {
 
@@ -716,10 +824,11 @@ func DeleteANFAccount(ctx context.Context, resourceGroupName, accountName string
 	return nil
 }
 
-// WaitForNoANFResource waits for a specified resource to don't exist anymore following a deletion.
+// WaitForANFResource waits for a specified resource to be fully ready following a creation operation or for it to be
+// not found if waitForNoAnfResource is true.
 // This is due to a known issue related to ARM Cache where the state of the resource is still cached within ARM infrastructure
 // reporting that it still exists so looping into a get process will return 404 as soon as the cached state expires
-func WaitForNoANFResource(ctx context.Context, resourceID string, intervalInSec int, retries int, checkForReplication bool) error {
+func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec int, retries int, checkForReplication, waitForNoAnfResource bool) error {
 
 	var err error
 
@@ -734,6 +843,16 @@ func WaitForNoANFResource(ctx context.Context, resourceID string, intervalInSec 
 				uri.GetANFCapacityPool(resourceID),
 				uri.GetANFVolume(resourceID),
 				uri.GetANFSnapshot(resourceID),
+			)
+		} else if uri.IsANFBackup(resourceID) {
+			client, _ := getBackupsClient()
+			_, err = client.Get(
+				ctx,
+				uri.GetResourceGroup(resourceID),
+				uri.GetANFAccount(resourceID),
+				uri.GetANFCapacityPool(resourceID),
+				uri.GetANFVolume(resourceID),
+				uri.GetANFBackup(resourceID),
 			)
 		} else if uri.IsANFVolume(resourceID) {
 			client, _ := getVolumesClient()
@@ -787,89 +906,55 @@ func WaitForNoANFResource(ctx context.Context, resourceID string, intervalInSec 
 			)
 		}
 
-		// In this case error is expected
-		if err != nil {
-			return nil
+		if waitForNoAnfResource {
+			// Error is expected in this case
+			if err != nil {
+				return nil
+			}
+		} else {
+			// We exit when there is no error
+			if err == nil {
+				return nil
+			}
 		}
 	}
 
-	return fmt.Errorf("exceeded number of retries: %v", retries)
+	return fmt.Errorf("wait not exited within expected parameters, number of retries %v and waitForNoAnfResource %v, error: %v", retries, waitForNoAnfResource, err)
 }
 
-// WaitForANFResource waits for a specified resource to be fully ready following a creation operation.
-func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec int, retries int, checkForReplication bool) error {
+// WaitForANFBackupCompletion waits for a specified resource to be fully ready following a creation operation.
+func WaitForANFBackupCompletion(ctx context.Context, backupID string, intervalInSec int, retries int) error {
 
 	var err error
 
+	if !uri.IsANFBackup(backupID) {
+		return fmt.Errorf("resource id is not a backup resource: %v", backupID)
+	}
+
+	backupsClient, err := getBackupsClient()
+	if err != nil {
+		return fmt.Errorf("an error ocurred while getting BackupsClient: %v", err)
+	}
+
+	backup := netapp.Backup{}
+
 	for i := 0; i < retries; i++ {
 		time.Sleep(time.Duration(intervalInSec) * time.Second)
-		if uri.IsANFSnapshot(resourceID) {
-			client, _ := getSnapshotsClient()
-			_, err = client.Get(
-				ctx,
-				uri.GetResourceGroup(resourceID),
-				uri.GetANFAccount(resourceID),
-				uri.GetANFCapacityPool(resourceID),
-				uri.GetANFVolume(resourceID),
-				uri.GetANFSnapshot(resourceID),
-			)
-		} else if uri.IsANFVolume(resourceID) {
-			client, _ := getVolumesClient()
-			if !checkForReplication {
-				_, err = client.Get(
-					ctx,
-					uri.GetResourceGroup(resourceID),
-					uri.GetANFAccount(resourceID),
-					uri.GetANFCapacityPool(resourceID),
-					uri.GetANFVolume(resourceID),
-				)
-			} else {
-				_, err = client.ReplicationStatusMethod(
-					ctx,
-					uri.GetResourceGroup(resourceID),
-					uri.GetANFAccount(resourceID),
-					uri.GetANFCapacityPool(resourceID),
-					uri.GetANFVolume(resourceID),
-				)
-			}
-		} else if uri.IsANFCapacityPool(resourceID) {
-			client, _ := getPoolsClient()
-			_, err = client.Get(
-				ctx,
-				uri.GetResourceGroup(resourceID),
-				uri.GetANFAccount(resourceID),
-				uri.GetANFCapacityPool(resourceID),
-			)
-		} else if uri.IsANFSnapshotPolicy(resourceID) {
-			client, _ := getSnapshotPoliciesClient()
-			_, err = client.Get(
-				ctx,
-				uri.GetResourceGroup(resourceID),
-				uri.GetANFAccount(resourceID),
-				uri.GetANFSnapshotPolicy(resourceID),
-			)
-		} else if uri.IsANFBackupPolicy(resourceID) {
-			client, _ := getBackupPoliciesClient()
-			_, err = client.Get(
-				ctx,
-				uri.GetResourceGroup(resourceID),
-				uri.GetANFAccount(resourceID),
-				uri.GetANFBackupPolicy(resourceID),
-			)
-		} else if uri.IsANFAccount(resourceID) {
-			client, _ := getAccountsClient()
-			_, err = client.Get(
-				ctx,
-				uri.GetResourceGroup(resourceID),
-				uri.GetANFAccount(resourceID),
-			)
-		}
 
-		// In this case, we exit when there is no error
-		if err == nil {
+		backup, err = backupsClient.Get(
+			ctx,
+			uri.GetResourceGroup(backupID),
+			uri.GetANFAccount(backupID),
+			uri.GetANFCapacityPool(backupID),
+			uri.GetANFVolume(backupID),
+			uri.GetANFBackup(backupID),
+		)
+
+		// In this case, we exit when provisioning state is Succeeded
+		if *backup.ProvisioningState == "Succeeded" {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("resource still not found after number of retries: %v, error: %v", retries, err)
+	return fmt.Errorf("backup didn't complete after number of retries %v, and wait time between retry %v", retries, intervalInSec)
 }
