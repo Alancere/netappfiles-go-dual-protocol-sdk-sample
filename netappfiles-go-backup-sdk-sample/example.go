@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	shouldCleanUp bool = true
+	shouldCleanUp bool = false
 
 	// Important - change ANF related variables below to appropriate values related to your environment
 	// Share ANF properties related
