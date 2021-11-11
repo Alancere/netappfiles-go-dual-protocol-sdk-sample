@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	shouldCleanUp bool = false
+	shouldCleanUp bool = true
 
 	// Important - change ANF related variables below to appropriate values related to your environment
 	// Share ANF properties related
@@ -423,7 +423,7 @@ func main() {
 	}
 
 	utils.ConsoleOutput("Waiting for backup completion...")
-	err = sdkutils.WaitForANFBackupCompletion(cntx, backupID, 15, 200)
+	err = sdkutils.WaitForANFBackupCompletion(cntx, backupID, 10, 60)
 	if err != nil {
 		utils.ConsoleOutput(fmt.Sprintf("an error ocurred while waiting for backup to complete: %v", err))
 		exitCode = 1
@@ -483,24 +483,37 @@ func exit(cntx context.Context) {
 	// code, clean up will need to be done manually.
 	// Since resource deletions cannot happen if there is a child resource, we will perform the
 	// clean up in the following order:
+	//     Volume Backups
 	//     Volume
 	//     Capacity Pool
 	//     Snapshot Policy
 	//     Backup Policy
+	//     Account level backup (last backup)
 	//     Account
 	if shouldCleanUp {
 		utils.ConsoleOutput("\tPerforming clean up")
 
-		resourceGroupName := resourceGroupName
-		accountName := anfAccountName
-		poolName := capacityPoolName
-
 		volumesToDelete := []string{volumeID, restoredVolumeID}
 
 		for _, volumeIdToDelete := range volumesToDelete {
+
+			// Backup Cleanup - volume level
+			utils.ConsoleOutput("\tVolume level backup cleanup ...")
+			err := sdkutils.DeleteANFBackups(
+				cntx,
+				volumeIdToDelete,
+				true,
+				false,
+			)
+			if err != nil {
+				utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting backups at volume level: %v", err))
+				exitCode = 1
+				return
+			}
+
 			// Volume deletion
 			utils.ConsoleOutput(fmt.Sprintf("\tRemoving %v volume...", volumeIdToDelete))
-			err := sdkutils.DeleteANFVolume(
+			err = sdkutils.DeleteANFVolume(
 				cntx,
 				uri.GetResourceGroup(volumeIdToDelete),
 				uri.GetANFAccount(volumeIdToDelete),
@@ -519,7 +532,6 @@ func exit(cntx context.Context) {
 				shouldCleanUp = false
 				return
 			}
-			utils.ConsoleOutput("\tVolume successfully deleted")
 		}
 
 		// Pool Cleanup
@@ -527,8 +539,8 @@ func exit(cntx context.Context) {
 		err := sdkutils.DeleteANFCapacityPool(
 			cntx,
 			resourceGroupName,
-			accountName,
-			poolName,
+			anfAccountName,
+			capacityPoolName,
 		)
 		if err != nil {
 			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting capacity pool: %v", err))
@@ -549,7 +561,7 @@ func exit(cntx context.Context) {
 		err = sdkutils.DeleteANFSnapshotPolicy(
 			cntx,
 			resourceGroupName,
-			accountName,
+			anfAccountName,
 			snapshotPolicyName,
 		)
 		if err != nil {
@@ -571,7 +583,7 @@ func exit(cntx context.Context) {
 		err = sdkutils.DeleteANFBackupPolicy(
 			cntx,
 			resourceGroupName,
-			accountName,
+			anfAccountName,
 			backupPolicyName,
 		)
 		if err != nil {
@@ -588,12 +600,27 @@ func exit(cntx context.Context) {
 		}
 		utils.ConsoleOutput("\tBackup policy successfully deleted")
 
+		// Backup Cleanup - Account level (last backup)
+		utils.ConsoleOutput("\tAccount level backup cleanup (last backup) ...")
+		err = sdkutils.DeleteANFBackups(
+			cntx,
+			accountID,
+			false,
+			true,
+		)
+		if err != nil {
+			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting last backup from account level: %v", err))
+			exitCode = 1
+			return
+		}
+		utils.ConsoleOutput("\tAccount level backup successfully deleted")
+
 		// Account Cleanup
 		utils.ConsoleOutput(fmt.Sprintf("\tCleaning up account %v...", accountID))
 		err = sdkutils.DeleteANFAccount(
 			cntx,
 			resourceGroupName,
-			accountName,
+			anfAccountName,
 		)
 		if err != nil {
 			utils.ConsoleOutput(fmt.Sprintf("an error ocurred while deleting account: %v", err))

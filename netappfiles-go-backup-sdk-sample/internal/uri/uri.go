@@ -22,7 +22,6 @@ const (
 
 // GetResourceValue returns the name of a resource from resource id/uri based on resource type name.
 func GetResourceValue(resourceURI string, resourceName string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -63,7 +62,6 @@ func GetResourceValue(resourceURI string, resourceName string) string {
 
 // GetResourceName gets the resource name from resource id/uri
 func GetResourceName(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -74,7 +72,6 @@ func GetResourceName(resourceURI string) string {
 
 // GetSubscription gets he subscription id from resource id/uri
 func GetSubscription(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -89,7 +86,6 @@ func GetSubscription(resourceURI string) string {
 
 // GetResourceGroup gets the resource group name from resource id/uri
 func GetResourceGroup(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -104,7 +100,6 @@ func GetResourceGroup(resourceURI string) string {
 
 // GetANFAccount gets an account name from resource id/uri
 func GetANFAccount(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -119,7 +114,6 @@ func GetANFAccount(resourceURI string) string {
 
 // GetANFCapacityPool gets pool name from resource id/uri
 func GetANFCapacityPool(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -134,7 +128,6 @@ func GetANFCapacityPool(resourceURI string) string {
 
 // GetANFVolume gets volume name from resource id/uri
 func GetANFVolume(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -149,7 +142,6 @@ func GetANFVolume(resourceURI string) string {
 
 // GetANFSnapshot gets snapshot name from resource id/uri
 func GetANFSnapshot(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -164,7 +156,6 @@ func GetANFSnapshot(resourceURI string) string {
 
 // GetANFSnapshotPolicy gets snapshot policy name from resource id/uri
 func GetANFSnapshotPolicy(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -179,7 +170,6 @@ func GetANFSnapshotPolicy(resourceURI string) string {
 
 // GetANFBackupPolicy gets backup policy name from resource id/uri
 func GetANFBackupPolicy(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -194,7 +184,6 @@ func GetANFBackupPolicy(resourceURI string) string {
 
 // GetANFBackup gets backup name from resource id/uri
 func GetANFBackup(resourceURI string) string {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return ""
 	}
@@ -207,9 +196,22 @@ func GetANFBackup(resourceURI string) string {
 	return backupName
 }
 
+// GetANFAccountBackup gets backup name from resource id/uri
+func GetANFAccountBackup(resourceURI string) string {
+	if len(strings.TrimSpace(resourceURI)) == 0 {
+		return ""
+	}
+
+	backupName := GetResourceValue(resourceURI, "/accountBackups")
+	if backupName == "" {
+		return ""
+	}
+
+	return backupName
+}
+
 // IsANFResource checks if resource is an ANF related resource
 func IsANFResource(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 {
 		return false
 	}
@@ -219,7 +221,6 @@ func IsANFResource(resourceURI string) bool {
 
 // IsANFSnapshot checks resource is a snapshot
 func IsANFSnapshot(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -229,7 +230,6 @@ func IsANFSnapshot(resourceURI string) bool {
 
 // IsANFVolume checks resource is a volume
 func IsANFVolume(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -241,7 +241,6 @@ func IsANFVolume(resourceURI string) bool {
 
 // IsANFCapacityPool checks resource is a capacity pool
 func IsANFCapacityPool(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -254,7 +253,6 @@ func IsANFCapacityPool(resourceURI string) bool {
 
 // IsANFSnapshotPolicy checks resource is a snapshot policy
 func IsANFSnapshotPolicy(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -267,7 +265,6 @@ func IsANFSnapshotPolicy(resourceURI string) bool {
 
 // IsANFBackupPolicy checks resource is a backup policy
 func IsANFBackupPolicy(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -281,7 +278,6 @@ func IsANFBackupPolicy(resourceURI string) bool {
 
 // IsANFBackup checks resource is a backup
 func IsANFBackup(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -294,9 +290,23 @@ func IsANFBackup(resourceURI string) bool {
 		strings.LastIndex(resourceURI, "/backups/") > -1
 }
 
+// IsANFAccountBackup checks resource is a backup
+func IsANFAccountBackup(resourceURI string) bool {
+	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
+		return false
+	}
+
+	return !IsANFBackupPolicy(resourceURI) &&
+		!IsANFSnapshot(resourceURI) &&
+		!IsANFSnapshotPolicy(resourceURI) &&
+		!IsANFVolume(resourceURI) &&
+		!IsANFCapacityPool(resourceURI) &&
+		!IsANFBackup(resourceURI) &&
+		strings.LastIndex(resourceURI, "/accountBackups/") > -1
+}
+
 // IsANFAccount checks resource is an account
 func IsANFAccount(resourceURI string) bool {
-
 	if len(strings.TrimSpace(resourceURI)) == 0 || !IsANFResource(resourceURI) {
 		return false
 	}
@@ -306,8 +316,10 @@ func IsANFAccount(resourceURI string) bool {
 		!IsANFVolume(resourceURI) &&
 		!IsANFCapacityPool(resourceURI) &&
 		!IsANFSnapshotPolicy(resourceURI) &&
+		!IsANFAccountBackup(resourceURI) &&
 		strings.LastIndex(resourceURI, "/snapshotPolicies/") == -1 &&
 		strings.LastIndex(resourceURI, "/backupPolicies/") == -1 &&
+		strings.LastIndex(resourceURI, "/accountBackups/") == -1 &&
 		strings.LastIndex(resourceURI, "/backups/") == -1 &&
 		strings.LastIndex(resourceURI, "/netAppAccounts/") > -1
 }

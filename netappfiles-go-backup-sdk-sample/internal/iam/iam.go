@@ -25,7 +25,6 @@ import (
 
 // GetAuthorizer gets an authorization token to be used within ANF client
 func GetAuthorizer() (autorest.Authorizer, string, error) {
-
 	// Getting information from authentication file
 	info, err := readAuthJSON(os.Getenv("AZURE_AUTH_LOCATION"))
 

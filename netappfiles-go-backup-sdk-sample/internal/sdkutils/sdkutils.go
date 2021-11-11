@@ -12,6 +12,7 @@ package sdkutils
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,7 +37,6 @@ var (
 )
 
 func validateANFServiceLevel(serviceLevel string) (validatedServiceLevel netapp.ServiceLevel, err error) {
-
 	var svcLevel netapp.ServiceLevel
 
 	switch strings.ToLower(serviceLevel) {
@@ -54,7 +54,6 @@ func validateANFServiceLevel(serviceLevel string) (validatedServiceLevel netapp.
 }
 
 func getResourcesClient() (resources.Client, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return resources.Client{}, err
@@ -68,7 +67,6 @@ func getResourcesClient() (resources.Client, error) {
 }
 
 func getAccountsClient() (netapp.AccountsClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.AccountsClient{}, err
@@ -81,8 +79,20 @@ func getAccountsClient() (netapp.AccountsClient, error) {
 	return client, nil
 }
 
-func getPoolsClient() (netapp.PoolsClient, error) {
+func getAccountBackupsClient() (netapp.AccountBackupsClient, error) {
+	authorizer, subscriptionID, err := iam.GetAuthorizer()
+	if err != nil {
+		return netapp.AccountBackupsClient{}, err
+	}
 
+	client := netapp.NewAccountBackupsClient(subscriptionID)
+	client.Authorizer = authorizer
+	client.AddToUserAgent(userAgent)
+
+	return client, nil
+}
+
+func getPoolsClient() (netapp.PoolsClient, error) {
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.PoolsClient{}, err
@@ -96,7 +106,6 @@ func getPoolsClient() (netapp.PoolsClient, error) {
 }
 
 func getVolumesClient() (netapp.VolumesClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.VolumesClient{}, err
@@ -110,7 +119,6 @@ func getVolumesClient() (netapp.VolumesClient, error) {
 }
 
 func getSnapshotsClient() (netapp.SnapshotsClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.SnapshotsClient{}, err
@@ -124,7 +132,6 @@ func getSnapshotsClient() (netapp.SnapshotsClient, error) {
 }
 
 func getSnapshotPoliciesClient() (netapp.SnapshotPoliciesClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.SnapshotPoliciesClient{}, err
@@ -138,7 +145,6 @@ func getSnapshotPoliciesClient() (netapp.SnapshotPoliciesClient, error) {
 }
 
 func getBackupPoliciesClient() (netapp.BackupPoliciesClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.BackupPoliciesClient{}, err
@@ -152,7 +158,6 @@ func getBackupPoliciesClient() (netapp.BackupPoliciesClient, error) {
 }
 
 func getBackupsClient() (netapp.BackupsClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.BackupsClient{}, err
@@ -166,7 +171,6 @@ func getBackupsClient() (netapp.BackupsClient, error) {
 }
 
 func getVaultsClient() (netapp.VaultsClient, error) {
-
 	authorizer, subscriptionID, err := iam.GetAuthorizer()
 	if err != nil {
 		return netapp.VaultsClient{}, err
@@ -181,7 +185,6 @@ func getVaultsClient() (netapp.VaultsClient, error) {
 
 // GetResourceByID gets a generic resource
 func GetResourceByID(ctx context.Context, resourceID, APIVersion string) (resources.GenericResource, error) {
-
 	resourcesClient, err := getResourcesClient()
 	if err != nil {
 		return resources.GenericResource{}, err
@@ -212,7 +215,6 @@ func GetResourceByID(ctx context.Context, resourceID, APIVersion string) (resour
 
 // CreateANFAccount creates an ANF Account resource
 func CreateANFAccount(ctx context.Context, location, resourceGroupName, accountName string, activeDirectories []netapp.ActiveDirectory, tags map[string]*string) (netapp.Account, error) {
-
 	accountClient, err := getAccountsClient()
 	if err != nil {
 		return netapp.Account{}, err
@@ -250,7 +252,6 @@ func CreateANFAccount(ctx context.Context, location, resourceGroupName, accountN
 
 // CreateANFCapacityPool creates an ANF Capacity Pool within ANF Account
 func CreateANFCapacityPool(ctx context.Context, location, resourceGroupName, accountName, poolName, serviceLevel string, sizeBytes int64, tags map[string]*string) (netapp.CapacityPool, error) {
-
 	poolClient, err := getPoolsClient()
 	if err != nil {
 		return netapp.CapacityPool{}, err
@@ -290,7 +291,6 @@ func CreateANFCapacityPool(ctx context.Context, location, resourceGroupName, acc
 
 // CreateANFVolume creates an ANF volume within a Capacity Pool
 func CreateANFVolume(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName, serviceLevel, subnetID, snapshotID string, backupID string, protocolTypes []string, volumeUsageQuota int64, unixReadOnly, unixReadWrite bool, tags map[string]*string, dataProtectionObject netapp.VolumePropertiesDataProtection) (netapp.Volume, error) {
-
 	if len(protocolTypes) > 2 {
 		return netapp.Volume{}, fmt.Errorf("maximum of two protocol types are supported")
 	}
@@ -375,7 +375,6 @@ func CreateANFVolume(ctx context.Context, location, resourceGroupName, accountNa
 
 // UpdateANFVolume update an ANF volume
 func UpdateANFVolume(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName string, volumePropertiesPatch netapp.VolumePatchProperties, tags map[string]*string) (netapp.VolumesUpdateFuture, error) {
-
 	volumeClient, err := getVolumesClient()
 	if err != nil {
 		return netapp.VolumesUpdateFuture{}, err
@@ -403,7 +402,6 @@ func UpdateANFVolume(ctx context.Context, location, resourceGroupName, accountNa
 
 // AuthorizeReplication - authorizes volume replication
 func AuthorizeReplication(ctx context.Context, resourceGroupName, accountName, poolName, volumeName, remoteVolumeResourceID string) error {
-
 	volumeClient, err := getVolumesClient()
 	if err != nil {
 		return err
@@ -434,7 +432,6 @@ func AuthorizeReplication(ctx context.Context, resourceGroupName, accountName, p
 
 // DeleteANFVolumeReplication - authorizes volume replication
 func DeleteANFVolumeReplication(ctx context.Context, resourceGroupName, accountName, poolName, volumeName string) error {
-
 	volumeClient, err := getVolumesClient()
 	if err != nil {
 		return err
@@ -462,7 +459,6 @@ func DeleteANFVolumeReplication(ctx context.Context, resourceGroupName, accountN
 
 // CreateANFSnapshot creates a Snapshot from an ANF volume
 func CreateANFSnapshot(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName, snapshotName string, tags map[string]*string) (netapp.Snapshot, error) {
-
 	snapshotClient, err := getSnapshotsClient()
 	if err != nil {
 		return netapp.Snapshot{}, err
@@ -494,7 +490,6 @@ func CreateANFSnapshot(ctx context.Context, location, resourceGroupName, account
 
 // DeleteANFSnapshot deletes a Snapshot from an ANF volume
 func DeleteANFSnapshot(ctx context.Context, resourceGroupName, accountName, poolName, volumeName, snapshotName string) error {
-
 	snapshotClient, err := getSnapshotsClient()
 	if err != nil {
 		return err
@@ -523,7 +518,6 @@ func DeleteANFSnapshot(ctx context.Context, resourceGroupName, accountName, pool
 
 // CreateANFSnapshotPolicy creates a Snapshot Policy to be used on volumes
 func CreateANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName, policyName string, policy netapp.SnapshotPolicy) (netapp.SnapshotPolicy, error) {
-
 	snapshotPolicyClient, err := getSnapshotPoliciesClient()
 	if err != nil {
 		return netapp.SnapshotPolicy{}, err
@@ -546,7 +540,6 @@ func CreateANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName
 
 // UpdateANFSnapshotPolicy update an ANF volume
 func UpdateANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName, policyName string, snapshotPolicyPatch netapp.SnapshotPolicyPatch) (netapp.SnapshotPoliciesUpdateFuture, error) {
-
 	snapshotPolicyClient, err := getSnapshotPoliciesClient()
 	if err != nil {
 		return netapp.SnapshotPoliciesUpdateFuture{}, err
@@ -569,7 +562,6 @@ func UpdateANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName
 
 // CreateANFBackupPolicy creates a Snapshot Policy to be used on volumes
 func CreateANFBackupPolicy(ctx context.Context, location, resourceGroupName, accountName, policyName string, policyProperties netapp.BackupPolicyProperties) (netapp.BackupPolicy, error) {
-
 	backupPolicyClient, err := getBackupPoliciesClient()
 	if err != nil {
 		return netapp.BackupPolicy{}, err
@@ -604,7 +596,6 @@ func CreateANFBackupPolicy(ctx context.Context, location, resourceGroupName, acc
 
 // CreateANFBackup creates an adhoc backup from volume
 func CreateANFBackup(ctx context.Context, location, resourceGroupName, accountName, poolName, volumeName, backupName, backupLabel string) (netapp.Backup, error) {
-
 	backupsClient, err := getBackupsClient()
 	if err != nil {
 		return netapp.Backup{}, err
@@ -643,7 +634,6 @@ func CreateANFBackup(ctx context.Context, location, resourceGroupName, accountNa
 
 // GetANFVault gets an netappAccount/vaults resource
 func GetANFVaultList(ctx context.Context, resourceGroupName, accountName string) (netapp.VaultList, error) {
-
 	vaultsClient, err := getVaultsClient()
 	if err != nil {
 		return netapp.VaultList{}, err
@@ -661,9 +651,8 @@ func GetANFVaultList(ctx context.Context, resourceGroupName, accountName string)
 	return vaults, nil
 }
 
-// UpdateANFBackupPolicy update an ANF volume
+// UpdateANFBackupPolicy update an ANF Backup Policy
 func UpdateANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, policyName string, backupPolicyPatch netapp.BackupPolicyPatch) (netapp.BackupPolicy, error) {
-
 	backupPoliciesClient, err := getBackupPoliciesClient()
 	if err != nil {
 		return netapp.BackupPolicy{}, err
@@ -691,7 +680,6 @@ func UpdateANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, 
 
 // DeleteANFVolume deletes a volume
 func DeleteANFVolume(ctx context.Context, resourceGroupName, accountName, poolName, volumeName string) error {
-
 	volumesClient, err := getVolumesClient()
 	if err != nil {
 		return err
@@ -719,7 +707,6 @@ func DeleteANFVolume(ctx context.Context, resourceGroupName, accountName, poolNa
 
 // DeleteANFCapacityPool deletes a capacity pool
 func DeleteANFCapacityPool(ctx context.Context, resourceGroupName, accountName, poolName string) error {
-
 	poolsClient, err := getPoolsClient()
 	if err != nil {
 		return err
@@ -746,7 +733,6 @@ func DeleteANFCapacityPool(ctx context.Context, resourceGroupName, accountName, 
 
 // DeleteANFSnapshotPolicy deletes a snapshot policy
 func DeleteANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName, policyName string) error {
-
 	snapshotPolicyClient, err := getSnapshotPoliciesClient()
 	if err != nil {
 		return err
@@ -773,7 +759,6 @@ func DeleteANFSnapshotPolicy(ctx context.Context, resourceGroupName, accountName
 
 // DeleteANFBackupPolicy deletes a backup policy
 func DeleteANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, policyName string) error {
-
 	backupPolicyClient, err := getBackupPoliciesClient()
 	if err != nil {
 		return err
@@ -798,9 +783,173 @@ func DeleteANFBackupPolicy(ctx context.Context, resourceGroupName, accountName, 
 	return nil
 }
 
+// DeleteANFBackups deletes backups, if shouldRemoveAllRegionalBackups is true, all regional backups are deleted
+func DeleteANFBackups(ctx context.Context, parentResourceID string, waitForSnapmirror, deleteLastBackup bool) error {
+	var err error
+
+	// Checking if Volume is enabled for backups, if not, exit
+	if uri.IsANFVolume(parentResourceID) {
+		volumesClient, err := getVolumesClient()
+		if err != nil {
+			return err
+		}
+
+		volume, err := volumesClient.Get(
+			ctx,
+			uri.GetResourceGroup(parentResourceID),
+			uri.GetANFAccount(parentResourceID),
+			uri.GetANFCapacityPool(parentResourceID),
+			uri.GetANFVolume(parentResourceID),
+		)
+
+		if err != nil {
+			return err
+		}
+
+		if volume.DataProtection.Backup == nil {
+			return nil
+		}
+	}
+
+	// Geting backup client depending on which level
+	// we are targeting (volume or account level)
+	backupsClient := netapp.BackupsClient{}
+	accountBackupsClient := netapp.AccountBackupsClient{}
+
+	if uri.IsANFVolume(parentResourceID) {
+		backupsClient, err = getBackupsClient()
+	} else {
+		accountBackupsClient, err = getAccountBackupsClient()
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// wait until initial backup shows up on get list of backups
+	// this is due to initial backup always require a snapmirror to
+	// be created.
+	if waitForSnapmirror {
+		err = waitForANFSnapmirrorAvailable(
+			ctx,
+			parentResourceID,
+			15,
+			40,
+		)
+
+		if err != nil {
+			return fmt.Errorf("an error ocurred while waiting for snapmirror: %v", err)
+		}
+	}
+
+	backupList := netapp.BackupsList{}
+
+	if uri.IsANFVolume(parentResourceID) {
+		backupList, _ = backupsClient.List(
+			ctx,
+			uri.GetResourceGroup(parentResourceID),
+			uri.GetANFAccount(parentResourceID),
+			uri.GetANFCapacityPool(parentResourceID),
+			uri.GetANFVolume(parentResourceID),
+		)
+	} else {
+		backupList, _ = accountBackupsClient.List(
+			ctx,
+			uri.GetResourceGroup(parentResourceID),
+			uri.GetANFAccount(parentResourceID),
+		)
+	}
+
+	// Converting backupList into a slice
+	backups := make([]netapp.Backup, 0)
+	for _, item := range *backupList.Value {
+		backups = append(backups, item)
+	}
+
+	// Sorting backups by date ascending.
+	// Backups needs to be deleted from newest to oldest.
+	sort.SliceStable(backups, func(i, j int) bool {
+		return backups[i].CreationDate.ToTime().Before(backups[j].CreationDate.ToTime())
+	})
+
+	utils.ConsoleOutput("\tBackup deletion order:")
+	for i, backup := range backups {
+		message := fmt.Sprintf("\t\t%v - BackupName: %v, CreationDate: %v", i, *backup.Name, backup.CreationDate)
+
+		if i == len(backups)-1 {
+			if !deleteLastBackup {
+				message = fmt.Sprintf("\t\t%v - BackupName: %v, CreationDate: %v (deferred to account level removal)", i, *backup.Name, backup.CreationDate)
+			}
+		}
+
+		utils.ConsoleOutput(message)
+	}
+
+	for i, backup := range backups {
+		// Checking if we should delete last backup, the last one cannot be deleted
+		// from the Volume, only from account level
+		if i == len(backups)-1 {
+			if !deleteLastBackup {
+				break
+			}
+		}
+
+		utils.ConsoleOutput(fmt.Sprintf("\t\tDeleting backup %v", *backup.Name))
+
+		futureBackupsClient := netapp.BackupsDeleteFuture{}
+		futureAccountBackupsClient := netapp.AccountBackupsDeleteFuture{}
+
+		if uri.IsANFVolume(parentResourceID) {
+			futureBackupsClient, err = backupsClient.Delete(
+				ctx,
+				uri.GetResourceGroup(*backup.ID),
+				uri.GetANFAccount(*backup.ID),
+				uri.GetANFCapacityPool(*backup.ID),
+				uri.GetANFVolume(*backup.ID),
+				uri.GetANFBackup(*backup.ID),
+			)
+		} else {
+			// Making sure we're deleting only backups tied to this account since
+			// all backups for a region can be shown in any account for the same
+			// region
+			if strings.ToLower(uri.GetANFAccount(*backup.ID)) == strings.ToLower(uri.GetANFAccount(parentResourceID)) {
+				futureAccountBackupsClient, err = accountBackupsClient.Delete(
+					ctx,
+					uri.GetResourceGroup(*backup.ID),
+					uri.GetANFAccount(*backup.ID),
+					uri.GetANFAccountBackup(*backup.ID),
+				)
+			} else {
+				continue
+			}
+		}
+
+		if err != nil {
+			return fmt.Errorf("cannot delete backup: %v", err)
+		}
+
+		if uri.IsANFVolume(parentResourceID) {
+			err = futureBackupsClient.WaitForCompletionRef(ctx, backupsClient.Client)
+		} else {
+			err = futureAccountBackupsClient.WaitForCompletionRef(ctx, accountBackupsClient.Client)
+		}
+
+		if err != nil {
+			return fmt.Errorf("cannot get the backup delete future response: %v", err)
+		}
+
+		err = WaitForANFResource(ctx, *backup.ID, 30, 100, false, true)
+		if err != nil {
+			return fmt.Errorf(fmt.Sprintf("an error ocurred while waiting for backup complete deletion: %v", err))
+		}
+		utils.ConsoleOutput("\t\tBackup deleted")
+	}
+
+	return nil
+}
+
 // DeleteANFAccount deletes an account
 func DeleteANFAccount(ctx context.Context, resourceGroupName, accountName string) error {
-
 	accountsClient, err := getAccountsClient()
 	if err != nil {
 		return err
@@ -829,12 +978,13 @@ func DeleteANFAccount(ctx context.Context, resourceGroupName, accountName string
 // This is due to a known issue related to ARM Cache where the state of the resource is still cached within ARM infrastructure
 // reporting that it still exists so looping into a get process will return 404 as soon as the cached state expires
 func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec int, retries int, checkForReplication, waitForNoAnfResource bool) error {
-
 	var err error
+	resourceIdIdentified := false
 
 	for i := 0; i < retries; i++ {
 		time.Sleep(time.Duration(intervalInSec) * time.Second)
 		if uri.IsANFSnapshot(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getSnapshotsClient()
 			_, err = client.Get(
 				ctx,
@@ -845,6 +995,7 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				uri.GetANFSnapshot(resourceID),
 			)
 		} else if uri.IsANFBackup(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getBackupsClient()
 			_, err = client.Get(
 				ctx,
@@ -854,9 +1005,20 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				uri.GetANFVolume(resourceID),
 				uri.GetANFBackup(resourceID),
 			)
+		} else if uri.IsANFAccountBackup(resourceID) {
+			resourceIdIdentified = true
+			client, _ := getAccountBackupsClient()
+			_, err = client.Get(
+				ctx,
+				uri.GetResourceGroup(resourceID),
+				uri.GetANFAccount(resourceID),
+				uri.GetANFAccountBackup(resourceID),
+			)
 		} else if uri.IsANFVolume(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getVolumesClient()
 			if !checkForReplication {
+				resourceIdIdentified = true
 				_, err = client.Get(
 					ctx,
 					uri.GetResourceGroup(resourceID),
@@ -865,6 +1027,7 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 					uri.GetANFVolume(resourceID),
 				)
 			} else {
+				resourceIdIdentified = true
 				_, err = client.ReplicationStatusMethod(
 					ctx,
 					uri.GetResourceGroup(resourceID),
@@ -874,6 +1037,7 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				)
 			}
 		} else if uri.IsANFCapacityPool(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getPoolsClient()
 			_, err = client.Get(
 				ctx,
@@ -882,6 +1046,7 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				uri.GetANFCapacityPool(resourceID),
 			)
 		} else if uri.IsANFSnapshotPolicy(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getSnapshotPoliciesClient()
 			_, err = client.Get(
 				ctx,
@@ -890,6 +1055,7 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				uri.GetANFSnapshotPolicy(resourceID),
 			)
 		} else if uri.IsANFBackupPolicy(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getBackupPoliciesClient()
 			_, err = client.Get(
 				ctx,
@@ -898,12 +1064,17 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 				uri.GetANFBackupPolicy(resourceID),
 			)
 		} else if uri.IsANFAccount(resourceID) {
+			resourceIdIdentified = true
 			client, _ := getAccountsClient()
 			_, err = client.Get(
 				ctx,
 				uri.GetResourceGroup(resourceID),
 				uri.GetANFAccount(resourceID),
 			)
+		}
+
+		if resourceIdIdentified == false {
+			return fmt.Errorf("resource id %v is not properly handled by WaitForANFResource function.", resourceID)
 		}
 
 		if waitForNoAnfResource {
@@ -922,9 +1093,8 @@ func WaitForANFResource(ctx context.Context, resourceID string, intervalInSec in
 	return fmt.Errorf("wait not exited within expected parameters, number of retries %v and waitForNoAnfResource %v, error: %v", retries, waitForNoAnfResource, err)
 }
 
-// WaitForANFBackupCompletion waits for a specified resource to be fully ready following a creation operation.
+// WaitForANFBackupCompletion waits for the specified backup to be completed.
 func WaitForANFBackupCompletion(ctx context.Context, backupID string, intervalInSec int, retries int) error {
-
 	var err error
 
 	if !uri.IsANFBackup(backupID) {
@@ -941,7 +1111,7 @@ func WaitForANFBackupCompletion(ctx context.Context, backupID string, intervalIn
 	for i := 0; i < retries; i++ {
 		time.Sleep(time.Duration(intervalInSec) * time.Second)
 
-		backup, err = backupsClient.Get(
+		backup, _ = backupsClient.Get(
 			ctx,
 			uri.GetResourceGroup(backupID),
 			uri.GetANFAccount(backupID),
@@ -957,4 +1127,62 @@ func WaitForANFBackupCompletion(ctx context.Context, backupID string, intervalIn
 	}
 
 	return fmt.Errorf("backup didn't complete after number of retries %v, and wait time between retry %v", retries, intervalInSec)
+}
+
+// waitForANFSnapmirror waits until snapmirror is available from a get
+func waitForANFSnapmirrorAvailable(ctx context.Context, parentResourceID string, intervalInSec int, retries int) error {
+	var err error
+
+	if !(uri.IsANFVolume(parentResourceID) || uri.IsANFAccount(parentResourceID)) {
+		return fmt.Errorf("resource id %v is not a volume or account type", parentResourceID)
+	}
+
+	backupsClient := netapp.BackupsClient{}
+	accountBackupsClient := netapp.AccountBackupsClient{}
+
+	if uri.IsANFVolume(parentResourceID) {
+		backupsClient, err = getBackupsClient()
+	} else {
+		accountBackupsClient, err = getAccountBackupsClient()
+	}
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < retries; i++ {
+		time.Sleep(time.Duration(intervalInSec) * time.Second)
+
+		backupList := netapp.BackupsList{}
+
+		if uri.IsANFVolume(parentResourceID) {
+			backupList, _ = backupsClient.List(
+				ctx,
+				uri.GetResourceGroup(parentResourceID),
+				uri.GetANFAccount(parentResourceID),
+				uri.GetANFCapacityPool(parentResourceID),
+				uri.GetANFVolume(parentResourceID),
+			)
+		} else {
+			backupList, _ = accountBackupsClient.List(
+				ctx,
+				uri.GetResourceGroup(parentResourceID),
+				uri.GetANFAccount(parentResourceID),
+			)
+		}
+
+		// Exiting if no backups are defined since this will not generate
+		// the snapmirror initial snapshot used by backups
+		if len(*backupList.Value) == 0 {
+			return nil
+		}
+
+		for _, item := range *backupList.Value {
+			if strings.Contains(*item.Name, "snapmirror") {
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("wait exceed # of attempts to get snapmirror, number of retries %v and interval in seconds %v", retries, intervalInSec)
 }
