@@ -3,7 +3,9 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
-// This sample code showcases how to create and use ANF Snapshot policies.
+// This sample code showcases how to create and use ANF Backup Policies, and
+// create adhoc backups.
+//
 // For this to happen this code also creates Account, Capacity Pool, and
 // Volumes.
 // Clean up process (not enabled by default) is made in reverse order,
@@ -389,6 +391,9 @@ func main() {
 	//------------------------
 	// Adhoc backup
 	//------------------------
+
+	// Adhoc backups means that we are creating backups outside the
+	// backup policies, as a one-off backup.
 	utils.ConsoleOutput(fmt.Sprintf("Creating adhoc backup for NFSv3 Volume %v ...", volumeName))
 
 	// Build data protection object with snapshot and backup properties
