@@ -25,12 +25,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+
 	"netappfiles-go-backup-sdk-sample/internal/sdkutils"
 	"netappfiles-go-backup-sdk-sample/internal/uri"
 	"netappfiles-go-backup-sdk-sample/internal/utils"
 
-	"github.com/Azure/azure-sdk-for-go/profiles/latest/netapp/mgmt/netapp"
-	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/netapp/armnetapp"
 	"github.com/yelinaung/go-haikunator"
 )
 
@@ -47,8 +48,8 @@ var (
 	volumeSizeBytes       int64 = 107374182400  // 100GiB (minimum volume size)
 	protocolTypes               = []string{"NFSv3"}
 	sampleTags                  = map[string]*string{
-		"Author":  to.StringPtr("ANF Go Snapshot Policy SDK Sample"),
-		"Service": to.StringPtr("Azure Netapp Files"),
+		"Author":  to.Ptr("ANF Go Snapshot Policy SDK Sample"),
+		"Service": to.Ptr("Azure Netapp Files"),
 	}
 
 	// ANF Resource Properties
@@ -89,17 +90,17 @@ func main() {
 	utils.PrintHeader("Azure NetAppFiles Go Backup SDK Sample - Sample application that enables policy-based backup and takes adhoc backup on an NFSv3 volume.")
 
 	// Getting subscription ID from authentication file
-	config, err := utils.ReadAzureBasicInfoJSON(os.Getenv("AZURE_AUTH_LOCATION"))
-	if err != nil {
-		utils.ConsoleOutput(fmt.Sprintf("an error ocurred getting non-sensitive info from AzureAuthFile: %v", err))
-		exitCode = 1
-		shouldCleanUp = false
-		return
-	}
+	// config, err := utils.ReadAzureBasicInfoJSON(os.Getenv("AZURE_AUTH_LOCATION"))
+	// if err != nil {
+	// 	utils.ConsoleOutput(fmt.Sprintf("an error ocurred getting non-sensitive info from AzureAuthFile: %v", err))
+	// 	exitCode = 1
+	// 	shouldCleanUp = false
+	// 	return
+	// }
 
 	// Checking if subnet exists before any other operation starts
 	subnetID := fmt.Sprintf("/subscriptions/%v/resourceGroups/%v/providers/Microsoft.Network/virtualNetworks/%v/subnets/%v",
-		*config.SubscriptionID,
+		sdkutils.SubscriptionID,
 		vnetresourceGroupName,
 		vnetName,
 		subnetName,
@@ -107,7 +108,7 @@ func main() {
 
 	utils.ConsoleOutput(fmt.Sprintf("Checking if vnet/subnet %v exists.", subnetID))
 
-	_, err = sdkutils.GetResourceByID(cntx, subnetID, virtualNetworksAPIVersion)
+	_, err := sdkutils.GetResourceByID(cntx, subnetID, virtualNetworksAPIVersion)
 	if err != nil {
 		if string(err.Error()) == "NotFound" {
 			utils.ConsoleOutput(fmt.Sprintf("error: subnet %v not found: %v", subnetID, err))
@@ -168,38 +169,38 @@ func main() {
 	// supported by backup policies.
 
 	// Everyday at 22:00
-	dailySchedule := netapp.DailySchedule{
-		Hour:            to.Int32Ptr(22),
-		Minute:          to.Int32Ptr(0),
-		SnapshotsToKeep: to.Int32Ptr(5),
+	dailySchedule := armnetapp.DailySchedule{
+		Hour:            to.Ptr[int32](22),
+		Minute:          to.Ptr[int32](0),
+		SnapshotsToKeep: to.Ptr[int32](5),
 	}
 
 	// Everyweek on Friday at 23:00
-	weeklySchedule := netapp.WeeklySchedule{
-		Day:             to.StringPtr("Friday"),
-		Hour:            to.Int32Ptr(23),
-		Minute:          to.Int32Ptr(0),
-		SnapshotsToKeep: to.Int32Ptr(5),
+	weeklySchedule := armnetapp.WeeklySchedule{
+		Day:             to.Ptr("Friday"),
+		Hour:            to.Ptr[int32](23),
+		Minute:          to.Ptr[int32](0),
+		SnapshotsToKeep: to.Ptr[int32](5),
 	}
 
 	// Monthly on specific days (01, 15 and 25) at 08:00 AM
-	monthlySchedule := netapp.MonthlySchedule{
-		DaysOfMonth:     to.StringPtr("1,15,25"),
-		Hour:            to.Int32Ptr(8),
-		Minute:          to.Int32Ptr(0),
-		SnapshotsToKeep: to.Int32Ptr(5),
+	monthlySchedule := armnetapp.MonthlySchedule{
+		DaysOfMonth:     to.Ptr("1,15,25"),
+		Hour:            to.Ptr[int32](8),
+		Minute:          to.Ptr[int32](0),
+		SnapshotsToKeep: to.Ptr[int32](5),
 	}
 
 	// Policy body, putting everything together
-	snapshotPolicyBody := netapp.SnapshotPolicy{
-		Location: to.StringPtr(location),
-		Name:     to.StringPtr(snapshotPolicyName),
-		SnapshotPolicyProperties: &netapp.SnapshotPolicyProperties{
-			HourlySchedule:  &netapp.HourlySchedule{},
+	snapshotPolicyBody := armnetapp.SnapshotPolicy{
+		Location: to.Ptr(location),
+		Name:     to.Ptr(snapshotPolicyName),
+		Properties: &armnetapp.SnapshotPolicyProperties{
+			HourlySchedule:  &armnetapp.HourlySchedule{},
 			DailySchedule:   &dailySchedule,
 			WeeklySchedule:  &weeklySchedule,
 			MonthlySchedule: &monthlySchedule,
-			Enabled:         to.BoolPtr(true),
+			Enabled:         to.Ptr(true),
 		},
 		Tags: sampleTags,
 	}
@@ -241,11 +242,11 @@ func main() {
 	// Note that Backup policy depends on snapshot policies and it cannot be used with hourly snapshots
 	utils.ConsoleOutput(fmt.Sprintf("Creating Backup Policy %v...", backupPolicyName))
 
-	backupPolicyProperties := netapp.BackupPolicyProperties{
-		DailyBackupsToKeep:   to.Int32Ptr(10),
-		WeeklyBackupsToKeep:  to.Int32Ptr(10),
-		MonthlyBackupsToKeep: to.Int32Ptr(10),
-		Enabled:              to.BoolPtr(true),
+	backupPolicyProperties := armnetapp.BackupPolicyProperties{
+		DailyBackupsToKeep:   to.Ptr[int32](10),
+		WeeklyBackupsToKeep:  to.Ptr[int32](10),
+		MonthlyBackupsToKeep: to.Ptr[int32](10),
+		Enabled:              to.Ptr(true),
 	}
 
 	backupPolicy, err := sdkutils.CreateANFBackupPolicy(
@@ -294,7 +295,7 @@ func main() {
 		shouldCleanUp = false
 		return
 	}
-	vaultID := (*vaultList.Value)[0].ID
+	vaultID := vaultList[0].ID
 	utils.ConsoleOutput(fmt.Sprintf("VaultID is: %v", *vaultID))
 
 	//----------------
@@ -303,15 +304,15 @@ func main() {
 	utils.ConsoleOutput(fmt.Sprintf("Creating NFSv3 Volume %v with Snapshot Policy %v and Backup Policy %v assigned...", volumeName, snapshotPolicyName, backupPolicyName))
 
 	// Build data protection object with snapshot and backup properties
-	dataProtectionObject := netapp.VolumePropertiesDataProtection{
-		Snapshot: &netapp.VolumeSnapshotProperties{
-			SnapshotPolicyID: to.StringPtr(snapshotPolicyID),
+	dataProtectionObject := armnetapp.VolumePropertiesDataProtection{
+		Snapshot: &armnetapp.VolumeSnapshotProperties{
+			SnapshotPolicyID: to.Ptr(snapshotPolicyID),
 		},
 
-		Backup: &netapp.VolumeBackupProperties{
-			BackupEnabled:  to.BoolPtr(true),
-			PolicyEnforced: to.BoolPtr(true),
-			BackupPolicyID: to.StringPtr(backupPolicyID),
+		Backup: &armnetapp.VolumeBackupProperties{
+			BackupEnabled:  to.Ptr(true),
+			PolicyEnforced: to.Ptr(true),
+			BackupPolicyID: to.Ptr(backupPolicyID),
 			VaultID:        vaultID,
 		},
 	}
@@ -360,14 +361,14 @@ func main() {
 	utils.ConsoleOutput(fmt.Sprintf("Updating backup policy %v...", backupPolicyName))
 
 	// Updating number of backups to keep for daily schedule
-	backupPolicyPropertyUpdate := netapp.BackupPolicyProperties{
-		DailyBackupsToKeep: to.Int32Ptr(5),
+	backupPolicyPropertyUpdate := armnetapp.BackupPolicyProperties{
+		DailyBackupsToKeep: to.Ptr[int32](5),
 	}
 
 	// Creating a patch object
-	backupPolicyPatch := netapp.BackupPolicyPatch{
-		Location:               to.StringPtr(location),
-		BackupPolicyProperties: &backupPolicyPropertyUpdate,
+	backupPolicyPatch := armnetapp.BackupPolicyPatch{
+		Location:   to.Ptr(location),
+		Properties: &backupPolicyPropertyUpdate,
 	}
 
 	// Executing the update
@@ -451,13 +452,13 @@ func main() {
 		serviceLevel,
 		subnetID,
 		"",
-		*backup.BackupID,
+		*backup.Properties.BackupID, // *backup.ID
 		protocolTypes,
 		volumeSizeBytes,
 		false,
 		true,
 		sampleTags,
-		netapp.VolumePropertiesDataProtection{},
+		armnetapp.VolumePropertiesDataProtection{},
 	)
 
 	if err != nil {
